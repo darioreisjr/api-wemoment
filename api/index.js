@@ -1,10 +1,33 @@
 // Importa as bibliotecas necessárias
 require('dotenv').config(); // Carrega as variáveis de ambiente do arquivo .env
 const express = require('express');
+const cors = require('cors'); // Importa a biblioteca CORS
 const { createClient } = require('@supabase/supabase-js');
 
 // Inicializa o aplicativo Express
 const app = express();
+
+// --- CONFIGURAÇÃO DINÂMICA DO CORS ---
+// Lista de origens (domínios) que têm permissão para acessar esta API
+const allowedOrigins = [
+  process.env.CLIENT_URL_DEV,
+  process.env.CLIENT_URL_PROD
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Permite requisições sem 'origin' (ex: Postman, apps mobile) ou se a origem estiver na lista
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Acesso não permitido por CORS'));
+    }
+  }
+};
+
+app.use(cors(corsOptions)); // Habilita o CORS com as opções dinâmicas
+// ------------------------------------
+
 app.use(express.json()); // Middleware para o Express entender requisições com corpo em JSON
 
 // Pega a URL e a Chave do Supabase do arquivo .env
@@ -15,26 +38,19 @@ const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const authenticateToken = async (req, res, next) => {
-    // 1. Pega o token do cabeçalho 'Authorization'
     const authHeader = req.headers['authorization'];
-    // O formato esperado é "Bearer TOKEN"
     const token = authHeader && authHeader.split(' ')[1];
 
-    // 2. Se não houver token, retorna erro 401 (Não Autorizado)
     if (token == null) {
-        return res.sendStatus(401);
+        return res.sendStatus(401); // Não Autorizado
     }
 
-    // 3. Verifica o token com o Supabase
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
-    // 4. Se o token for inválido ou expirar, o Supabase retorna um erro
     if (error) {
-        return res.status(403).json({ error: 'Token inválido ou expirado.' }); // 403 Forbidden
+        return res.status(403).json({ error: 'Token inválido ou expirado.' }); // Forbidden
     }
 
-    // 5. Se o token for válido, anexa o usuário ao objeto 'req'
-    // e passa para a próxima função (a lógica do endpoint)
     req.user = user;
     next();
 };
@@ -48,25 +64,19 @@ app.get('/api', (req, res) => {
 app.post('/api/auth/signup', async (req, res) => {
     const { email, password } = req.body;
 
-    // Validação básica
     if (!email || !password) {
         return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
     }
 
-    // Usa o cliente Supabase para criar o usuário
     const { data, error } = await supabase.auth.signUp({
         email: email,
         password: password,
     });
 
-    // Se houver um erro no cadastro
     if (error) {
         return res.status(400).json({ error: error.message });
     }
 
-    // Se o cadastro for bem-sucedido
-    // Por padrão, o Supabase pode enviar um e-mail de confirmação.
-    // O usuário só poderá logar após confirmar o e-mail.
     res.status(201).json({ user: data.user, message: 'Usuário criado com sucesso! Verifique seu e-mail para confirmação.' });
 });
 
@@ -74,35 +84,30 @@ app.post('/api/auth/signup', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
 
-    // Validação básica
     if (!email || !password) {
         return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
     }
 
-    // Usa o cliente Supabase para fazer o login
     const { data, error } = await supabase.auth.signInWithPassword({
         email: email,
         password: password,
     });
 
-    // Se houver um erro no login
     if (error) {
-        return res.status(401).json({ error: error.message }); // 401 Unauthorized
+        return res.status(401).json({ error: error.message }); // Unauthorized
     }
-
-    // Se o login for bem-sucedido, a 'data' conterá a sessão do usuário
-    // incluindo o access_token e o refresh_token.
-    res.status(200).json({ session: data.session, message: 'Login realizado com sucesso!' });
+    
+    // Modificado para retornar o token e o usuário diretamente, como o frontend espera
+    res.status(200).json({ 
+        token: data.session.access_token,
+        user: data.user,
+        message: 'Login realizado com sucesso!' 
+    });
 });
 
 // Endpoint protegido para obter dados do perfil do usuário
-// Note que 'authenticateToken' é passado antes da lógica principal da rota
 app.get('/api/profile', authenticateToken, (req, res) => {
-    // Graças ao middleware, agora temos acesso a 'req.user'
-    // que contém os dados do usuário autenticado.
     const userProfile = req.user;
-
-    // Retorna os dados do perfil do usuário
     res.status(200).json({
         id: userProfile.id,
         email: userProfile.email,
@@ -117,18 +122,15 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     if (!email) {
         return res.status(400).json({ error: 'O e-mail é obrigatório.' });
     }
-
-    // IMPORTANTE: Aqui você deve especificar para onde o usuário será redirecionado
-    // após clicar no link do e-mail. Deve ser uma página do seu frontend.
-    const resetUrl = 'http://localhost:3000/update-password'; // Exemplo para desenvolvimento local
+    
+    // A URL de redirecionamento deve apontar para a página de redefinição de senha no seu frontend
+    const resetUrl = `${process.env.CLIENT_URL_PROD}/update-password`; 
 
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: resetUrl,
     });
 
     if (error) {
-        // Mesmo com erro, retornamos uma mensagem genérica por segurança,
-        // para não revelar se um e-mail está ou não cadastrado.
         console.error('Erro na redefinição de senha:', error);
     }
 
@@ -137,9 +139,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     });
 });
 
-// Inicia o servidor para escutar em uma porta (ex: 3000)
-// Isso é útil para testes locais. A Vercel gerenciará isso no deploy.
-const port = 3000;
+// Inicia o servidor para escutar em uma porta
+const port = process.env.PORT || 3000;
 app.listen(port, () => {
     console.log(`Servidor rodando em http://localhost:${port}`);
 });
