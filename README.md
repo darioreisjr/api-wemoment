@@ -6,8 +6,10 @@ API RESTful construída com Express e Supabase para autenticação de usuários 
 - [Tecnologias](#tecnologias)
 - [Arquitetura](#arquitetura)
 - [Pré-requisitos](#pré-requisitos)
+- [Variáveis de ambiente](#variáveis-de-ambiente)
 - [Configuração do ambiente](#configuração-do-ambiente)
 - [Como executar](#como-executar)
+- [Fluxo de autenticação](#fluxo-de-autenticação)
 - [Endpoints](#endpoints)
   - [/api](#get-api)
   - [/api/auth/signup](#post-apiauthsignup)
@@ -17,6 +19,7 @@ API RESTful construída com Express e Supabase para autenticação de usuários 
 - [Tratamento de erros](#tratamento-de-erros)
 - [Deploy na Vercel](#deploy-na-vercel)
 - [Scripts disponíveis](#scripts-disponíveis)
+- [Próximos passos sugeridos](#próximos-passos-sugeridos)
 - [Licença](#licença)
 
 ## Tecnologias
@@ -27,7 +30,7 @@ API RESTful construída com Express e Supabase para autenticação de usuários 
 
 ## Arquitetura
 O projeto segue uma estrutura simples voltada para deploy serverless na Vercel:
-```
+```text
 .
 ├── api
 │   └── index.js       # Código principal da API Express
@@ -43,19 +46,30 @@ O arquivo `api/index.js` exporta a aplicação Express configurada com CORS din�
 - Conta Supabase com projeto configurado
 - Token de serviço `anon` do Supabase com permissões de autenticação
 
+## Variáveis de ambiente
+| Nome | Obrigatório | Descrição |
+| ---- | ----------- | --------- |
+| `SUPABASE_URL` | Sim | URL do seu projeto Supabase (ex.: `https://<sua-instancia>.supabase.co`). |
+| `SUPABASE_ANON_KEY` | Sim | Chave pública (anon key) do Supabase utilizada para autenticação. |
+| `CLIENT_URL_DEV` | Sim | Origem permitida para o frontend em desenvolvimento (utilizada pelo CORS). |
+| `CLIENT_URL_PROD` | Sim | Origem permitida para o frontend em produção (também usada como base do link de redefinição de senha). |
+| `PORT` | Não | Porta utilizada ao rodar a API localmente (padrão `3000`). |
+
+> ⚠️ Caso qualquer uma das URLs (`CLIENT_URL_DEV` ou `CLIENT_URL_PROD`) não seja definida, as requisições web provenientes dessa origem serão bloqueadas pela validação de CORS.
+
 ## Configuração do ambiente
-1. Copie o arquivo `.env.example` (caso exista) ou crie um novo arquivo `.env` na raiz do projeto.
-2. Defina as variáveis necessárias:
+1. Crie um arquivo `.env` na raiz do projeto (ou copie de um `.env.example`, caso exista).
+2. Defina as variáveis necessárias, seguindo o exemplo abaixo:
 
-```bash
-SUPABASE_URL="https://<sua-instancia>.supabase.co"
-SUPABASE_ANON_KEY="<sua-chave-anon>"
-CLIENT_URL_DEV="http://localhost:3000"   # URL do frontend em desenvolvimento
-CLIENT_URL_PROD="https://seu-dominio.com" # URL do frontend em produção
-PORT=3000                                  # Opcional: porta local para desenvolvimento
-```
+    ```bash
+    SUPABASE_URL="https://<sua-instancia>.supabase.co"
+    SUPABASE_ANON_KEY="<sua-chave-anon>"
+    CLIENT_URL_DEV="http://localhost:3000"   # URL do frontend em desenvolvimento
+    CLIENT_URL_PROD="https://app.wemoment.com" # URL do frontend em produção
+    PORT=3000                                  # Opcional: porta local para desenvolvimento
+    ```
 
-> 💡 As URLs definidas em `CLIENT_URL_DEV` e `CLIENT_URL_PROD` serão utilizadas para validar origens permitidas via CORS.
+3. No painel do Supabase, habilite o endereço listado em `CLIENT_URL_PROD` em **Authentication > URL Configuration > Redirect URLs**, adicionando também `https://<seu-domínio>/update-password` para suportar o fluxo de redefinição de senha.
 
 ## Como executar
 ```bash
@@ -66,7 +80,13 @@ npm install
 npm start
 ```
 
-O servidor será iniciado em `http://localhost:3000` (ou na porta definida pela variável `PORT`). Para testar a API manualmente, você pode utilizar ferramentas como [Insomnia](https://insomnia.rest/) ou [Postman](https://www.postman.com/).
+O servidor será iniciado em `http://localhost:3000` (ou na porta definida pela variável `PORT`). Para testar a API manualmente, utilize ferramentas como [Insomnia](https://insomnia.rest/) ou [Postman](https://www.postman.com/), lembrando de incluir o header `Origin` correspondente às URLs permitidas quando necessário.
+
+## Fluxo de autenticação
+1. **Cadastro (`/api/auth/signup`)**: cria o usuário no Supabase e envia e-mail de confirmação padrão.
+2. **Login (`/api/auth/login`)**: retorna o token `access_token` (`token`) e o objeto `user` esperado pelo frontend.
+3. **Perfil (`/api/profile`)**: requer o header `Authorization: Bearer <token>` para buscar os dados básicos do usuário autenticado via `supabase.auth.getUser`.
+4. **Esqueci minha senha (`/api/auth/forgot-password`)**: dispara um e-mail de redefinição apontando para `CLIENT_URL_PROD/update-password`. Garanta que essa rota existe no frontend e esteja configurada como URL de redirecionamento no Supabase.
 
 ## Endpoints
 Todos os endpoints retornam respostas em JSON.
@@ -91,8 +111,25 @@ Cria um novo usuário no Supabase Auth.
 ```
 
 **Respostas**
-- `201 Created` – Usuário criado com sucesso, retorna dados do usuário.
+- `201 Created` – Usuário criado com sucesso.
+  ```json
+  {
+    "user": {
+      "id": "...",
+      "email": "user@dominio.com",
+      "created_at": "2024-01-01T00:00:00Z",
+      "email_confirmed_at": null,
+      "aud": "authenticated"
+    },
+    "message": "Usuário criado com sucesso! Verifique seu e-mail para confirmação."
+  }
+  ```
 - `400 Bad Request` – E-mail ou senha ausentes, ou erro retornado pelo Supabase.
+  ```json
+  {
+    "error": "Email e senha são obrigatórios."
+  }
+  ```
 
 ### `POST /api/auth/login`
 Realiza login utilizando Supabase Auth e retorna o token de sessão.
@@ -106,7 +143,19 @@ Realiza login utilizando Supabase Auth e retorna o token de sessão.
 ```
 
 **Respostas**
-- `200 OK` – Retorna `token`, `user` e `message`.
+- `200 OK` – Retorna o token JWT do Supabase (`access_token`), o usuário autenticado e uma mensagem amigável.
+  ```json
+  {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": {
+      "id": "...",
+      "email": "user@dominio.com",
+      "created_at": "2024-01-01T00:00:00Z"
+    },
+    "message": "Login realizado com sucesso!"
+  }
+  ```
+- `400 Bad Request` – Faltam credenciais.
 - `401 Unauthorized` – Credenciais inválidas.
 
 ### `GET /api/profile`
@@ -134,11 +183,17 @@ Inicia o fluxo de redefinição de senha enviando e-mail via Supabase.
 
 **Respostas**
 - `200 OK` – Mensagem genérica informando que o e-mail foi enviado caso o usuário exista.
+  ```json
+  {
+    "message": "Se um usuário com este e-mail existir, um link para redefinição de senha será enviado."
+  }
+  ```
 - `400 Bad Request` – Quando o e-mail não é informado.
 
 ## Tratamento de erros
 - Erros de autenticação retornam mensagens claras em português, com códigos HTTP apropriados (`401`, `403`, `400`).
 - Exceções na integração com o Supabase são repassadas ao cliente quando relevante (ex.: tentativa de cadastro com e-mail já existente).
+- Erros de CORS retornam `Acesso não permitido por CORS`. Revise suas origens configuradas caso receba esta mensagem.
 
 ## Deploy na Vercel
 O arquivo [`vercel.json`](vercel.json) já está configurado para deploy serverless na Vercel:
@@ -148,12 +203,18 @@ O arquivo [`vercel.json`](vercel.json) já está configurado para deploy serverl
 Para publicar:
 1. Faça login na Vercel e importe o repositório.
 2. Configure as variáveis de ambiente no painel da Vercel (as mesmas do `.env`).
-3. O deploy será criado automaticamente a cada push na branch configurada.
+3. Garanta que as URLs do Supabase Auth estejam configuradas com os mesmos domínios do CORS.
+4. O deploy será criado automaticamente a cada push na branch configurada.
 
 ## Scripts disponíveis
 - `npm start`: inicia o servidor Express localmente.
 
 *(Nenhum script de testes está configurado atualmente.)*
+
+## Próximos passos sugeridos
+- Adicionar testes automatizados (unitários e/ou integração) cobrindo os fluxos de autenticação.
+- Incluir monitoramento de logs e métricas (ex.: Vercel Observability, Logflare) para acompanhar erros em produção.
+- Implementar rate limiting ou proteção adicional em endpoints sensíveis (login e redefinição de senha).
 
 ## Licença
 Este projeto está licenciado sob a licença [ISC](https://opensource.org/license/isc-license-txt/).
