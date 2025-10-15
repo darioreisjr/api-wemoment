@@ -53,64 +53,52 @@ const authenticateToken = async (req, res, next) => {
     next();
 };
 
-// Rota de teste para garantir que o servidor está funcionando
+// Rota de teste
 app.get('/api', (req, res) => {
     res.send('Olá! A API está no ar.');
 });
 
-// ==================================================================
-//  ATUALIZAÇÃO PRINCIPAL - ENDPOINT DE CADASTRO (SIGN UP)
-// ==================================================================
+// Endpoint para criar um novo usuário (Sign Up)
 app.post('/api/auth/signup', async (req, res) => {
-    // Agora pegamos também os novos campos do corpo da requisição
     const { email, password, firstName, lastName, gender } = req.body;
 
-    // Validação básica para os campos obrigatórios
     if (!email || !password || !firstName || !lastName) {
         return res.status(400).json({ error: 'Email, senha, nome e sobrenome são obrigatórios.' });
     }
 
-    // 1. Cria o usuário no Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email,
         password: password,
     });
 
     if (authError) {
-        // Retorna erro específico se o email já existe
         if (authError.message.includes('unique constraint')) {
             return res.status(409).json({ message: 'Este email já está cadastrado.' });
         }
         return res.status(400).json({ error: authError.message });
     }
     
-    // Se o usuário foi criado na autenticação, authData.user não será nulo
     if (authData.user) {
-        // 2. Insere os dados adicionais na tabela 'profiles'
         const { error: profileError } = await supabase
             .from('profiles')
             .insert({ 
-                user_id: authData.user.id, // Vincula com o ID do usuário recém-criado
+                user_id: authData.user.id,
                 first_name: firstName,
                 last_name: lastName,
-                gender: gender // Será nulo se não for enviado, o que é permitido
+                gender: gender
             });
 
         if (profileError) {
-            // Se a inserção no perfil falhar, é uma boa prática deletar o usuário recém-criado para evitar inconsistência.
             await supabase.auth.admin.deleteUser(authData.user.id);
             console.error('Erro ao criar perfil, usuário revertido:', profileError);
-            return res.status(500).json({ error: 'Ocorreu um erro ao salvar os dados do perfil. O cadastro foi cancelado.' });
+            return res.status(500).json({ error: 'Ocorreu um erro ao salvar os dados do perfil.' });
         }
-
     } else {
-        // Caso raro onde o usuário de autenticação não é retornado, mas sem erro.
         return res.status(500).json({ error: 'Usuário não foi criado, perfil não pode ser salvo.' });
     }
 
-    res.status(201).json({ user: authData.user, message: 'Usuário criado com sucesso! Verifique seu e-mail para confirmação.' });
+    res.status(201).json({ user: authData.user, message: 'Usuário criado com sucesso! Verifique seu e-mail.' });
 });
-
 
 // Endpoint para autenticar um usuário (Sign In / Login)
 app.post('/api/auth/login', async (req, res) => {
@@ -126,7 +114,7 @@ app.post('/api/auth/login', async (req, res) => {
     });
 
     if (error) {
-        return res.status(401).json({ error: 'Email ou senha inválidos' }); // Unauthorized
+        return res.status(401).json({ error: 'Email ou senha inválidos' });
     }
     
     res.status(200).json({ 
@@ -136,11 +124,9 @@ app.post('/api/auth/login', async (req, res) => {
     });
 });
 
-// Endpoint protegido para obter dados do perfil do usuário
+// Endpoint para obter dados do perfil do usuário
 app.get('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
-
-    // Busca os dados correspondentes na tabela 'profiles'
     const { data: profileData, error } = await supabase
         .from('profiles')
         .select('first_name, last_name, gender')
@@ -152,7 +138,6 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
         return res.status(500).json({ error: 'Não foi possível buscar os dados do perfil.' });
     }
 
-    // Combina os dados de autenticação com os dados do perfil
     const userProfile = {
         id: user.id,
         email: user.email,
@@ -165,59 +150,50 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
     res.status(200).json(userProfile);
 });
 
-// Endpoint para iniciar o processo de redefinição de senha
+// Endpoint para redefinição de senha
 app.post('/api/auth/forgot-password', async (req, res) => {
     const { email } = req.body;
-
     if (!email) {
         return res.status(400).json({ error: 'O e-mail é obrigatório.' });
     }
-    
     const resetUrl = `${process.env.CLIENT_URL_PROD}/update-password`; 
-
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: resetUrl,
-    });
-
-    if (error) {
-        console.error('Erro na redefinição de senha:', error);
-    }
-
-    res.status(200).json({
-        message: 'Se um usuário com este e-mail existir, um link para redefinição de senha será enviado.'
-    });
+    await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetUrl });
+    res.status(200).json({ message: 'Se um usuário com este e-mail existir, um link será enviado.' });
 });
 
-// Endpoint para ATUALIZAR os dados do perfil do usuário
+
+// ==================================================================
+//  ATUALIZAÇÃO PRINCIPAL - ENDPOINT DE ATUALIZAÇÃO (PATCH)
+// ==================================================================
 app.patch('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
     const { firstName, lastName, gender } = req.body;
 
-    if (!firstName && !lastName && !gender) {
-        return res.status(400).json({ error: 'Nenhum dado fornecido para atualização.' });
-    }
+    // Monta o objeto com os dados para atualizar ou inserir
+    const profileData = {
+        user_id: user.id, // Chave para o upsert
+        first_name: firstName,
+        last_name: lastName,
+        gender: gender,
+    };
 
-    const profileDataToUpdate = {};
-    if (firstName) profileDataToUpdate.first_name = firstName;
-    if (lastName) profileDataToUpdate.last_name = lastName;
-    if (gender !== undefined) profileDataToUpdate.gender = gender;
-
+    // Usa 'upsert' para criar se não existir, ou atualizar se existir
     const { data, error } = await supabase
         .from('profiles')
-        .update(profileDataToUpdate)
-        .eq('user_id', user.id)
-        .select();
+        .upsert(profileData, { onConflict: 'user_id' })
+        .select()
+        .single(); // .single() para retornar o objeto atualizado
 
     if (error) {
-        console.error('Erro ao atualizar perfil:', error);
-        return res.status(500).json({ error: 'Não foi possível atualizar o perfil.' });
+        console.error('Erro ao atualizar/criar perfil:', error);
+        return res.status(500).json({ error: 'Não foi possível salvar as informações do perfil.' });
     }
 
     res.status(200).json({ message: 'Perfil atualizado com sucesso!', profile: data });
 });
 
 
-// Inicia o servidor para escutar em uma porta
+// Inicia o servidor
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
     console.log(`Servidor rodando em http://localhost:${port}`);
