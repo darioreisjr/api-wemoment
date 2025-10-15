@@ -163,33 +163,56 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
 
 // ==================================================================
-//  ATUALIZAÇÃO PRINCIPAL - ENDPOINT DE ATUALIZAÇÃO (PATCH)
+//  ATUALIZAÇÃO PRINCIPAL - LÓGICA MAIS ROBUSTA PARA ATUALIZAR/CRIAR
 // ==================================================================
 app.patch('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
     const { firstName, lastName, gender } = req.body;
 
-    // Monta o objeto com os dados para atualizar ou inserir
     const profileData = {
-        user_id: user.id, // Chave para o upsert
         first_name: firstName,
         last_name: lastName,
         gender: gender,
     };
 
-    // Usa 'upsert' para criar se não existir, ou atualizar se existir
-    const { data, error } = await supabase
-        .from('profiles')
-        .upsert(profileData, { onConflict: 'user_id' })
-        .select()
-        .single(); // .single() para retornar o objeto atualizado
+    try {
+        // 1. Tenta atualizar o perfil existente
+        const { data: updatedData, error: updateError } = await supabase
+            .from('profiles')
+            .update(profileData)
+            .eq('user_id', user.id)
+            .select()
+            .single();
+        
+        // Se a atualização falhou porque o perfil não existe (erro comum), cria um novo.
+        if (updateError && updateError.code === 'PGRST116') {
+            const { data: insertedData, error: insertError } = await supabase
+                .from('profiles')
+                .insert({
+                    user_id: user.id,
+                    ...profileData
+                })
+                .select()
+                .single();
 
-    if (error) {
-        console.error('Erro ao atualizar/criar perfil:', error);
+            if (insertError) {
+                throw insertError; // Lança o erro de inserção se ocorrer
+            }
+            
+            return res.status(201).json({ message: 'Perfil criado e atualizado com sucesso!', profile: insertedData });
+        }
+        
+        // Se houve outro tipo de erro na atualização
+        if (updateError) {
+            throw updateError;
+        }
+
+        res.status(200).json({ message: 'Perfil atualizado com sucesso!', profile: updatedData });
+
+    } catch (error) {
+        console.error('Erro no endpoint PATCH /api/profile:', error);
         return res.status(500).json({ error: 'Não foi possível salvar as informações do perfil.' });
     }
-
-    res.status(200).json({ message: 'Perfil atualizado com sucesso!', profile: data });
 });
 
 
