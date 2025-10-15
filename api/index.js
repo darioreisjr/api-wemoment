@@ -10,19 +10,19 @@ const app = express();
 // --- CONFIGURAÇÃO DINÂMICA DO CORS ---
 // Lista de origens (domínios) que têm permissão para acessar esta API
 const allowedOrigins = [
-  process.env.CLIENT_URL_DEV,
-  process.env.CLIENT_URL_PROD
+    process.env.CLIENT_URL_DEV,
+    process.env.CLIENT_URL_PROD
 ];
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Permite requisições sem 'origin' (ex: Postman, apps mobile) ou se a origem estiver na lista
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Acesso não permitido por CORS'));
+    origin: function (origin, callback) {
+        // Permite requisições sem 'origin' (ex: Postman, apps mobile) ou se a origem estiver na lista
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Acesso não permitido por CORS'));
+        }
     }
-  }
 };
 
 app.use(cors(corsOptions)); // Habilita o CORS com as opções dinâmicas
@@ -96,23 +96,73 @@ app.post('/api/auth/login', async (req, res) => {
     if (error) {
         return res.status(401).json({ error: error.message }); // Unauthorized
     }
-    
+
     // Modificado para retornar o token e o usuário diretamente, como o frontend espera
-    res.status(200).json({ 
+    res.status(200).json({
         token: data.session.access_token,
         user: data.user,
-        message: 'Login realizado com sucesso!' 
+        message: 'Login realizado com sucesso!'
     });
 });
 
 // Endpoint protegido para obter dados do perfil do usuário
-app.get('/api/profile', authenticateToken, (req, res) => {
-    const userProfile = req.user;
-    res.status(200).json({
-        id: userProfile.id,
-        email: userProfile.email,
-        created_at: userProfile.created_at
-    });
+app.get('/api/profile', authenticateToken, async (req, res) => {
+    // O 'authenticateToken' já nos deu o 'req.user' com os dados de autenticação
+    const user = req.user;
+
+    // Agora, buscamos os dados correspondentes na tabela 'profiles'
+    const { data: profileData, error } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, gender')
+        .eq('user_id', user.id) // Busca o perfil onde o user_id é igual ao id do usuário autenticado
+        .single(); // .single() pega apenas um resultado, pois só deve haver um perfil por usuário
+
+    if (error) {
+        console.error('Erro ao buscar perfil:', error);
+        return res.status(500).json({ error: 'Não foi possível buscar os dados do perfil.' });
+    }
+
+    // Combina os dados de autenticação com os dados do perfil
+    const userProfile = {
+        id: user.id,
+        email: user.email,
+        created_at: user.created_at,
+        firstName: profileData.first_name,
+        lastName: profileData.last_name,
+        gender: profileData.gender
+    };
+
+    res.status(200).json(userProfile);
+});
+
+// Endpoint para ATUALIZAR os dados do perfil do usuário
+app.patch('/api/profile', authenticateToken, async (req, res) => {
+    const user = req.user; // Usuário autenticado
+    const { firstName, lastName, gender } = req.body; // Dados para atualizar
+
+    // Validação: Pelo menos um campo deve ser enviado para atualização
+    if (!firstName && !lastName && !gender) {
+        return res.status(400).json({ error: 'Nenhum dado fornecido para atualização.' });
+    }
+
+    // Monta o objeto apenas com os dados que foram enviados na requisição
+    const profileDataToUpdate = {};
+    if (firstName) profileDataToUpdate.first_name = firstName;
+    if (lastName) profileDataToUpdate.last_name = lastName;
+    if (gender !== undefined) profileDataToUpdate.gender = gender; // Permite atualizar para nulo/vazio
+
+    const { data, error } = await supabase
+        .from('profiles')
+        .update(profileDataToUpdate) // Usa o método .update()
+        .eq('user_id', user.id)     // Garante que só vai atualizar o perfil do usuário logado
+        .select()                   // .select() para retornar os dados atualizados
+
+    if (error) {
+        console.error('Erro ao atualizar perfil:', error);
+        return res.status(500).json({ error: 'Não foi possível atualizar o perfil.' });
+    }
+
+    res.status(200).json({ message: 'Perfil atualizado com sucesso!', profile: data });
 });
 
 // Endpoint para iniciar o processo de redefinição de senha
@@ -122,9 +172,9 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     if (!email) {
         return res.status(400).json({ error: 'O e-mail é obrigatório.' });
     }
-    
+
     // A URL de redirecionamento deve apontar para a página de redefinição de senha no seu frontend
-    const resetUrl = `${process.env.CLIENT_URL_PROD}/update-password`; 
+    const resetUrl = `${process.env.CLIENT_URL_PROD}/update-password`;
 
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: resetUrl,
