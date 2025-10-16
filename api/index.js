@@ -174,13 +174,16 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
 app.patch('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
-    const { firstName, lastName, gender } = req.body;
+    const { firstName, lastName, gender, avatar_url } = req.body;
 
-    const profileData = {
-        first_name: firstName,
-        last_name: lastName,
-        gender: gender,
-    };
+    // Constrói o objeto de dados apenas com os campos que foram enviados
+    const profileData = {};
+    if (firstName) profileData.first_name = firstName;
+    if (lastName) profileData.last_name = lastName;
+    if (gender) profileData.gender = gender;
+    // Adiciona a atualização do avatar_url se ele for enviado
+    if (avatar_url) profileData.avatar_url = avatar_url;
+
 
     try {
         const { data: updatedData, error: updateError } = await supabase
@@ -190,7 +193,7 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
             .select()
             .single();
 
-        if (updateError && updateError.code === 'PGRST116') {
+        if (updateError && updateError.code === 'PGRST116') { // Se o perfil não existir, cria um novo
             const { data: insertedData, error: insertError } = await supabase
                 .from('profiles')
                 .insert({
@@ -255,6 +258,8 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
 
         const publicUrl = urlData.publicUrl;
 
+        // Opcional: Atualiza o perfil imediatamente após o upload. 
+        // A lógica principal de salvar está agora no PATCH /api/profile
         const { error: profileError } = await supabase
             .from('profiles')
             .update({ avatar_url: publicUrl })
@@ -265,7 +270,7 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
             throw new Error('Não foi possível salvar a URL do avatar no perfil.');
         }
 
-        res.status(200).json({ message: 'Avatar atualizado com sucesso!', avatarUrl: publicUrl });
+        res.status(200).json({ message: 'Avatar enviado com sucesso!', avatarUrl: publicUrl });
 
     } catch (error) {
         console.error('Erro no endpoint de upload de avatar:', error);
