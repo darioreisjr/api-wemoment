@@ -65,7 +65,7 @@ app.get('/api', (req, res) => {
 
 // Endpoint para criar um novo usuário (Sign Up)
 app.post('/api/auth/signup', async (req, res) => {
-    const { email, password, firstName, lastName, gender } = req.body;
+    const { email, password, firstName, lastName, gender, birth_year } = req.body; // Adicionado birth_year
 
     if (!email || !password || !firstName || !lastName) {
         return res.status(400).json({ error: 'Email, senha, nome e sobrenome são obrigatórios.' });
@@ -90,7 +90,8 @@ app.post('/api/auth/signup', async (req, res) => {
                 user_id: authData.user.id,
                 first_name: firstName,
                 last_name: lastName,
-                gender: gender
+                gender: gender,
+                birth_year: birth_year // Adicionado birth_year
             });
 
         if (profileError) {
@@ -135,10 +136,10 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
     
-    // CORREÇÃO: Adicionado 'avatar_url' à lista de campos a serem selecionados.
+    // CORREÇÃO: Adicionado 'avatar_url' e 'birth_year' à lista de campos a serem selecionados.
     const { data: profileData, error } = await supabase
         .from('profiles')
-        .select('first_name, last_name, gender, avatar_url')
+        .select('first_name, last_name, gender, avatar_url, birth_year') // Adicionado birth_year
         .eq('user_id', user.id)
         .single();
 
@@ -155,6 +156,7 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
         lastName: profileData?.last_name,
         gender: profileData?.gender,
         avatar: profileData?.avatar_url, // Mapeia a coluna 'avatar_url' para o campo 'avatar' esperado pelo frontend
+        birth_year: profileData?.birth_year, // Adicionado birth_year
     };
 
     res.status(200).json(userProfile);
@@ -174,15 +176,15 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
 app.patch('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
-    const { firstName, lastName, gender, avatar_url } = req.body;
+    const { firstName, lastName, gender, avatar_url, birth_year } = req.body; // Adicionado birth_year
 
     // Constrói o objeto de dados apenas com os campos que foram enviados
     const profileData = {};
     if (firstName) profileData.first_name = firstName;
     if (lastName) profileData.last_name = lastName;
     if (gender) profileData.gender = gender;
-    // Adiciona a atualização do avatar_url se ele for enviado
     if (avatar_url) profileData.avatar_url = avatar_url;
+    if (birth_year) profileData.birth_year = birth_year; // Adicionado birth_year
 
 
     try {
