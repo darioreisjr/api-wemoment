@@ -132,13 +132,14 @@ app.post('/api/auth/login', async (req, res) => {
 // Endpoint para obter dados do perfil do usuário
 app.get('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
+    // CORREÇÃO: Selecionando também o campo avatar_url
     const { data: profileData, error } = await supabase
         .from('profiles')
-        .select('first_name, last_name, gender, avatar_url') // Incluído avatar_url
+        .select('first_name, last_name, gender, avatar_url')
         .eq('user_id', user.id)
         .single();
 
-    if (error && error.code !== 'PGRST116') { // Ignora o erro se o perfil ainda não existir
+    if (error && error.code !== 'PGRST116') { // Ignora erro se perfil não existir
         console.error('Erro ao buscar perfil:', error);
         return res.status(500).json({ error: 'Não foi possível buscar os dados do perfil.' });
     }
@@ -150,7 +151,7 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
         firstName: profileData?.first_name,
         lastName: profileData?.last_name,
         gender: profileData?.gender,
-        avatar: profileData?.avatar_url, // Mapeia para o campo avatar no frontend
+        avatar: profileData?.avatar_url, // CORREÇÃO: Mapeando o campo para o frontend
     };
 
     res.status(200).json(userProfile);
@@ -215,9 +216,6 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
     }
 });
 
-// ==================================================================
-//  ENDPOINT PARA UPLOAD DE AVATAR (CORRIGIDO)
-// ==================================================================
 app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), async (req, res) => {
     const user = req.user;
 
@@ -228,10 +226,8 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
     try {
         const file = req.file;
         const fileExt = file.originalname.split('.').pop();
-        // AQUI ESTÁ A CORREÇÃO: o arquivo agora é salvo dentro de uma pasta com o ID do usuário
         const filePath = `${user.id}/${Date.now()}.${fileExt}`;
 
-        // Faz o upload do arquivo para o Supabase Storage usando o novo caminho
         const { data: uploadData, error: uploadError } = await supabase
             .storage
             .from('avatars')
@@ -245,7 +241,6 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
             return res.status(500).json({ error: `Erro do Supabase Storage: ${uploadError.message}` });
         }
 
-        // Obtém a URL pública da imagem que acabamos de enviar
         const { data: urlData } = supabase
             .storage
             .from('avatars')
@@ -257,7 +252,6 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
 
         const publicUrl = urlData.publicUrl;
 
-        // Atualiza a tabela 'profiles' com a nova URL do avatar
         const { error: profileError } = await supabase
             .from('profiles')
             .update({ avatar_url: publicUrl })
