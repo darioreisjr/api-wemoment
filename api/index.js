@@ -3,24 +3,29 @@ require('dotenv').config(); // Carrega as variáveis de ambiente do arquivo .env
 const express = require('express');
 const cors = require('cors'); // Importa a biblioteca CORS
 const { createClient } = require('@supabase/supabase-js');
+const multer = require('multer'); // Importe o multer
+
+// Configuração do multer para armazenamento em memória
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 // Inicializa o aplicativo Express
 const app = express();
 
 // --- CONFIGURAÇÃO DINÂMICA DO CORS ---
 const allowedOrigins = [
-  process.env.CLIENT_URL_DEV,
-  process.env.CLIENT_URL_PROD
+    process.env.CLIENT_URL_DEV,
+    process.env.CLIENT_URL_PROD
 ];
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Acesso não permitido por CORS'));
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Acesso não permitido por CORS'));
+        }
     }
-  }
 };
 
 app.use(cors(corsOptions));
@@ -77,11 +82,11 @@ app.post('/api/auth/signup', async (req, res) => {
         }
         return res.status(400).json({ error: authError.message });
     }
-    
+
     if (authData.user) {
         const { error: profileError } = await supabase
             .from('profiles')
-            .insert({ 
+            .insert({
                 user_id: authData.user.id,
                 first_name: firstName,
                 last_name: lastName,
@@ -116,11 +121,11 @@ app.post('/api/auth/login', async (req, res) => {
     if (error) {
         return res.status(401).json({ error: 'Email ou senha inválidos' });
     }
-    
-    res.status(200).json({ 
+
+    res.status(200).json({
         token: data.session.access_token,
         user: data.user,
-        message: 'Login realizado com sucesso!' 
+        message: 'Login realizado com sucesso!'
     });
 });
 
@@ -156,7 +161,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     if (!email) {
         return res.status(400).json({ error: 'O e-mail é obrigatório.' });
     }
-    const resetUrl = `${process.env.CLIENT_URL_PROD}/update-password`; 
+    const resetUrl = `${process.env.CLIENT_URL_PROD}/update-password`;
     await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetUrl });
     res.status(200).json({ message: 'Se um usuário com este e-mail existir, um link será enviado.' });
 });
@@ -183,7 +188,7 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
             .eq('user_id', user.id)
             .select()
             .single();
-        
+
         // Se a atualização falhou porque o perfil não existe (erro comum), cria um novo.
         if (updateError && updateError.code === 'PGRST116') {
             const { data: insertedData, error: insertError } = await supabase
@@ -198,10 +203,10 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
             if (insertError) {
                 throw insertError; // Lança o erro de inserção se ocorrer
             }
-            
+
             return res.status(201).json({ message: 'Perfil criado e atualizado com sucesso!', profile: insertedData });
         }
-        
+
         // Se houve outro tipo de erro na atualização
         if (updateError) {
             throw updateError;
@@ -215,6 +220,65 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
     }
 });
 
+// ==================================================================
+//  ENDPOINT PARA UPLOAD DE AVATAR
+// ==================================================================
+app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), async (req, res) => {
+    const user = req.user;
+
+    if (!req.file) {
+        return res.status(400).json({ error: 'Nenhum arquivo foi enviado.' });
+    }
+
+    try {
+        const file = req.file;
+        const fileExt = file.originalname.split('.').pop();
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+
+        // Faz o upload do arquivo para o Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabase
+            .storage
+            .from('avatars') // O nome do seu bucket
+            .upload(fileName, file.buffer, {
+                contentType: file.mimetype,
+                upsert: true // Se um arquivo com o mesmo nome existir, ele será substituído
+            });
+
+        if (uploadError) {
+            console.error('Erro no upload para o Supabase:', uploadError);
+            throw new Error('Não foi possível fazer o upload da imagem.');
+        }
+
+        // Obtém a URL pública da imagem que acabamos de enviar
+        const { data: urlData } = supabase
+            .storage
+            .from('avatars')
+            .getPublicUrl(fileName);
+
+        if (!urlData || !urlData.publicUrl) {
+            throw new Error('Não foi possível obter a URL pública da imagem.');
+        }
+
+        const publicUrl = urlData.publicUrl;
+
+        // Atualiza a tabela 'profiles' com a nova URL do avatar
+        const { error: profileError } = await supabase
+            .from('profiles')
+            .update({ avatar_url: publicUrl })
+            .eq('user_id', user.id);
+
+        if (profileError) {
+            console.error('Erro ao atualizar o perfil:', profileError);
+            throw new Error('Não foi possível salvar a URL do avatar no perfil.');
+        }
+
+        res.status(200).json({ message: 'Avatar atualizado com sucesso!', avatarUrl: publicUrl });
+
+    } catch (error) {
+        console.error('Erro no endpoint de upload de avatar:', error);
+        res.status(500).json({ error: error.message || 'Ocorreu um erro interno.' });
+    }
+});
 
 // Inicia o servidor
 const port = process.env.PORT || 3000;
