@@ -129,16 +129,20 @@ app.post('/api/auth/login', async (req, res) => {
     });
 });
 
-// Endpoint para obter dados do perfil do usuário
+// ==================================================================
+//  CORREÇÃO PRINCIPAL: GARANTIR QUE a `avatar_url` SEJA ENVIADA
+// ==================================================================
 app.get('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
+    
+    // CORREÇÃO: Adicionado 'avatar_url' à lista de campos a serem selecionados.
     const { data: profileData, error } = await supabase
         .from('profiles')
         .select('first_name, last_name, gender, avatar_url')
         .eq('user_id', user.id)
         .single();
 
-    if (error && error.code !== 'PGRST116') { // Ignora erro se perfil não existir
+    if (error && error.code !== 'PGRST116') { // Ignora o erro se o perfil ainda não existir
         console.error('Erro ao buscar perfil:', error);
         return res.status(500).json({ error: 'Não foi possível buscar os dados do perfil.' });
     }
@@ -150,7 +154,7 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
         firstName: profileData?.first_name,
         lastName: profileData?.last_name,
         gender: profileData?.gender,
-        avatar: profileData?.avatar_url,
+        avatar: profileData?.avatar_url, // Mapeia a coluna 'avatar_url' para o campo 'avatar' esperado pelo frontend
     };
 
     res.status(200).json(userProfile);
@@ -225,12 +229,7 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
     try {
         const file = req.file;
         const fileExt = file.originalname.split('.').pop();
-        
-        // ======================= AQUI ESTÁ A CORREÇÃO FINAL =======================
-        // O caminho do arquivo deve ser "ID_DO_USUARIO/nome_do_arquivo.ext"
-        // para que a regra de segurança (RLS Policy) do Supabase permita o upload.
         const filePath = `${user.id}/${Date.now()}.${fileExt}`;
-        // =========================================================================
 
         const { data: uploadData, error: uploadError } = await supabase
             .storage
