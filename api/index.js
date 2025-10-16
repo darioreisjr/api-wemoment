@@ -132,7 +132,6 @@ app.post('/api/auth/login', async (req, res) => {
 // Endpoint para obter dados do perfil do usuário
 app.get('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
-    // CORREÇÃO: Selecionando também o campo avatar_url
     const { data: profileData, error } = await supabase
         .from('profiles')
         .select('first_name, last_name, gender, avatar_url')
@@ -151,7 +150,7 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
         firstName: profileData?.first_name,
         lastName: profileData?.last_name,
         gender: profileData?.gender,
-        avatar: profileData?.avatar_url, // CORREÇÃO: Mapeando o campo para o frontend
+        avatar: profileData?.avatar_url,
     };
 
     res.status(200).json(userProfile);
@@ -226,7 +225,12 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
     try {
         const file = req.file;
         const fileExt = file.originalname.split('.').pop();
+        
+        // ======================= AQUI ESTÁ A CORREÇÃO FINAL =======================
+        // O caminho do arquivo deve ser "ID_DO_USUARIO/nome_do_arquivo.ext"
+        // para que a regra de segurança (RLS Policy) do Supabase permita o upload.
         const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+        // =========================================================================
 
         const { data: uploadData, error: uploadError } = await supabase
             .storage
