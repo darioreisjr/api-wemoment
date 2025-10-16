@@ -65,7 +65,8 @@ app.get('/api', (req, res) => {
 
 // Endpoint para criar um novo usuário (Sign Up)
 app.post('/api/auth/signup', async (req, res) => {
-    const { email, password, firstName, lastName, gender, birth_year } = req.body; // Adicionado birth_year
+    // Alterado para receber date_of_birth
+    const { email, password, firstName, lastName, gender, date_of_birth } = req.body;
 
     if (!email || !password || !firstName || !lastName) {
         return res.status(400).json({ error: 'Email, senha, nome e sobrenome são obrigatórios.' });
@@ -91,7 +92,7 @@ app.post('/api/auth/signup', async (req, res) => {
                 first_name: firstName,
                 last_name: lastName,
                 gender: gender,
-                birth_year: birth_year // Adicionado birth_year
+                date_of_birth: date_of_birth // Salva a data de nascimento completa
             });
 
         if (profileError) {
@@ -130,16 +131,14 @@ app.post('/api/auth/login', async (req, res) => {
     });
 });
 
-// ==================================================================
-//  CORREÇÃO PRINCIPAL: GARANTIR QUE a `avatar_url` SEJA ENVIADA
-// ==================================================================
+
 app.get('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
     
-    // CORREÇÃO: Adicionado 'avatar_url' e 'birth_year' à lista de campos a serem selecionados.
+    // Alterado para buscar date_of_birth
     const { data: profileData, error } = await supabase
         .from('profiles')
-        .select('first_name, last_name, gender, avatar_url, birth_year') // Adicionado birth_year
+        .select('first_name, last_name, gender, avatar_url, date_of_birth')
         .eq('user_id', user.id)
         .single();
 
@@ -155,8 +154,8 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
         firstName: profileData?.first_name,
         lastName: profileData?.last_name,
         gender: profileData?.gender,
-        avatar: profileData?.avatar_url, // Mapeia a coluna 'avatar_url' para o campo 'avatar' esperado pelo frontend
-        birth_year: profileData?.birth_year, // Adicionado birth_year
+        avatar: profileData?.avatar_url,
+        dateOfBirth: profileData?.date_of_birth, // Mapeia para o campo esperado pelo frontend
     };
 
     res.status(200).json(userProfile);
@@ -176,15 +175,15 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
 app.patch('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
-    const { firstName, lastName, gender, avatar_url, birth_year } = req.body; // Adicionado birth_year
+    // Alterado para receber date_of_birth
+    const { firstName, lastName, gender, avatar_url, date_of_birth } = req.body;
 
-    // Constrói o objeto de dados apenas com os campos que foram enviados
     const profileData = {};
     if (firstName) profileData.first_name = firstName;
     if (lastName) profileData.last_name = lastName;
     if (gender) profileData.gender = gender;
     if (avatar_url) profileData.avatar_url = avatar_url;
-    if (birth_year) profileData.birth_year = birth_year; // Adicionado birth_year
+    if (date_of_birth) profileData.date_of_birth = date_of_birth; // Adiciona a data de nascimento
 
 
     try {
@@ -195,7 +194,7 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
             .select()
             .single();
 
-        if (updateError && updateError.code === 'PGRST116') { // Se o perfil não existir, cria um novo
+        if (updateError && updateError.code === 'PGRST116') {
             const { data: insertedData, error: insertError } = await supabase
                 .from('profiles')
                 .insert({
@@ -259,9 +258,7 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
         }
 
         const publicUrl = urlData.publicUrl;
-
-        // Opcional: Atualiza o perfil imediatamente após o upload. 
-        // A lógica principal de salvar está agora no PATCH /api/profile
+        
         const { error: profileError } = await supabase
             .from('profiles')
             .update({ avatar_url: publicUrl })
