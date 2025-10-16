@@ -215,6 +215,9 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
     }
 });
 
+// ==================================================================
+//  ENDPOINT PARA UPLOAD DE AVATAR (CORRIGIDO)
+// ==================================================================
 app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), async (req, res) => {
     const user = req.user;
 
@@ -225,26 +228,28 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
     try {
         const file = req.file;
         const fileExt = file.originalname.split('.').pop();
-        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+        // AQUI ESTÁ A CORREÇÃO: o arquivo agora é salvo dentro de uma pasta com o ID do usuário
+        const filePath = `${user.id}/${Date.now()}.${fileExt}`;
 
+        // Faz o upload do arquivo para o Supabase Storage usando o novo caminho
         const { data: uploadData, error: uploadError } = await supabase
             .storage
             .from('avatars')
-            .upload(fileName, file.buffer, {
+            .upload(filePath, file.buffer, {
                 contentType: file.mimetype,
                 upsert: true
             });
 
         if (uploadError) {
             console.error('Erro no upload para o Supabase:', uploadError);
-            // MODIFICAÇÃO: Retorna o erro específico do Supabase
             return res.status(500).json({ error: `Erro do Supabase Storage: ${uploadError.message}` });
         }
 
+        // Obtém a URL pública da imagem que acabamos de enviar
         const { data: urlData } = supabase
             .storage
             .from('avatars')
-            .getPublicUrl(fileName);
+            .getPublicUrl(filePath);
 
         if (!urlData || !urlData.publicUrl) {
             throw new Error('Não foi possível obter a URL pública da imagem.');
@@ -252,6 +257,7 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
 
         const publicUrl = urlData.publicUrl;
 
+        // Atualiza a tabela 'profiles' com a nova URL do avatar
         const { error: profileError } = await supabase
             .from('profiles')
             .update({ avatar_url: publicUrl })
@@ -266,10 +272,10 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
 
     } catch (error) {
         console.error('Erro no endpoint de upload de avatar:', error);
-        // MODIFICAÇÃO: Retorna a mensagem de erro da exceção
         res.status(500).json({ error: error.message || 'Ocorreu um erro interno no servidor.' });
     }
 });
+
 
 // Inicia o servidor
 const port = process.env.PORT || 3000;
