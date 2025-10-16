@@ -134,11 +134,11 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
     const { data: profileData, error } = await supabase
         .from('profiles')
-        .select('first_name, last_name, gender')
+        .select('first_name, last_name, gender, avatar_url') // Incluído avatar_url
         .eq('user_id', user.id)
         .single();
 
-    if (error) {
+    if (error && error.code !== 'PGRST116') { // Ignora o erro se o perfil ainda não existir
         console.error('Erro ao buscar perfil:', error);
         return res.status(500).json({ error: 'Não foi possível buscar os dados do perfil.' });
     }
@@ -147,13 +147,15 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
         id: user.id,
         email: user.email,
         created_at: user.created_at,
-        firstName: profileData.first_name,
-        lastName: profileData.last_name,
-        gender: profileData.gender
+        firstName: profileData?.first_name,
+        lastName: profileData?.last_name,
+        gender: profileData?.gender,
+        avatar: profileData?.avatar_url, // Mapeia para o campo avatar no frontend
     };
 
     res.status(200).json(userProfile);
 });
+
 
 // Endpoint para redefinição de senha
 app.post('/api/auth/forgot-password', async (req, res) => {
@@ -166,10 +168,6 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     res.status(200).json({ message: 'Se um usuário com este e-mail existir, um link será enviado.' });
 });
 
-
-// ==================================================================
-//  ATUALIZAÇÃO PRINCIPAL - LÓGICA MAIS ROBUSTA PARA ATUALIZAR/CRIAR
-// ==================================================================
 app.patch('/api/profile', authenticateToken, async (req, res) => {
     const user = req.user;
     const { firstName, lastName, gender } = req.body;
@@ -181,7 +179,6 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
     };
 
     try {
-        // 1. Tenta atualizar o perfil existente
         const { data: updatedData, error: updateError } = await supabase
             .from('profiles')
             .update(profileData)
@@ -189,7 +186,6 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
             .select()
             .single();
 
-        // Se a atualização falhou porque o perfil não existe (erro comum), cria um novo.
         if (updateError && updateError.code === 'PGRST116') {
             const { data: insertedData, error: insertError } = await supabase
                 .from('profiles')
@@ -201,13 +197,12 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
                 .single();
 
             if (insertError) {
-                throw insertError; // Lança o erro de inserção se ocorrer
+                throw insertError;
             }
 
             return res.status(201).json({ message: 'Perfil criado e atualizado com sucesso!', profile: insertedData });
         }
 
-        // Se houve outro tipo de erro na atualização
         if (updateError) {
             throw updateError;
         }
@@ -220,9 +215,6 @@ app.patch('/api/profile', authenticateToken, async (req, res) => {
     }
 });
 
-// ==================================================================
-//  ENDPOINT PARA UPLOAD DE AVATAR
-// ==================================================================
 app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), async (req, res) => {
     const user = req.user;
 
@@ -235,21 +227,20 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
         const fileExt = file.originalname.split('.').pop();
         const fileName = `${user.id}-${Date.now()}.${fileExt}`;
 
-        // Faz o upload do arquivo para o Supabase Storage
         const { data: uploadData, error: uploadError } = await supabase
             .storage
-            .from('avatars') // O nome do seu bucket
+            .from('avatars')
             .upload(fileName, file.buffer, {
                 contentType: file.mimetype,
-                upsert: true // Se um arquivo com o mesmo nome existir, ele será substituído
+                upsert: true
             });
 
         if (uploadError) {
             console.error('Erro no upload para o Supabase:', uploadError);
-            throw new Error('Não foi possível fazer o upload da imagem.');
+            // MODIFICAÇÃO: Retorna o erro específico do Supabase
+            return res.status(500).json({ error: `Erro do Supabase Storage: ${uploadError.message}` });
         }
 
-        // Obtém a URL pública da imagem que acabamos de enviar
         const { data: urlData } = supabase
             .storage
             .from('avatars')
@@ -261,7 +252,6 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
 
         const publicUrl = urlData.publicUrl;
 
-        // Atualiza a tabela 'profiles' com a nova URL do avatar
         const { error: profileError } = await supabase
             .from('profiles')
             .update({ avatar_url: publicUrl })
@@ -276,7 +266,8 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
 
     } catch (error) {
         console.error('Erro no endpoint de upload de avatar:', error);
-        res.status(500).json({ error: error.message || 'Ocorreu um erro interno.' });
+        // MODIFICAÇÃO: Retorna a mensagem de erro da exceção
+        res.status(500).json({ error: error.message || 'Ocorreu um erro interno no servidor.' });
     }
 });
 
@@ -286,5 +277,4 @@ app.listen(port, () => {
     console.log(`Servidor rodando em http://localhost:${port}`);
 });
 
-// Exporta o app para a Vercel
 module.exports = app;
