@@ -1,6 +1,6 @@
 # API WeMoment
 
-API RESTful construída com Express e Supabase para autenticação de usuários do projeto **WeMoment**. O serviço oferece endpoints para cadastro, login, recuperação de senha e consulta de perfil autenticado, além de uma configuração de CORS dinâmica para controlar o acesso a partir dos ambientes web do cliente.
+API RESTful construída com Express e Supabase para autenticação de usuários do projeto **WeMoment**. O serviço oferece endpoints para cadastro, login, recuperação de senha e consulta de perfil autenticado, além de uma configuração de CORS dinâmica para controlar o acesso a partir dos ambientes web do cliente..
 
 ## Índice
 - [Tecnologias](#tecnologias)
