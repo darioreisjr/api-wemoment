@@ -279,7 +279,7 @@ app.post('/api/profile/avatar', authenticateToken, upload.single('avatar'), asyn
 
 
 // ===============================================
-// ===          NOVOS ENDPOINTS - EVENTOS        ===
+// ===          ENDPOINTS - EVENTOS           ===
 // ===============================================
 
 // GET /api/events - Listar todos os eventos do usuário autenticado
@@ -315,15 +315,15 @@ app.post('/api/events', authenticateToken, async (req, res) => {
             location,
             type
         })
-        .select()
-        .single();
+        .select(); // CORREÇÃO: Removido o .single() daqui
 
     if (error) {
         console.error('Erro ao criar evento:', error);
         return res.status(500).json({ error: 'Não foi possível criar o evento.' });
     }
 
-    res.status(201).json(data);
+    // Retorna o primeiro (e único) item do array de dados
+    res.status(201).json(data[0]);
 });
 
 // PUT /api/events/:id - Atualizar um evento existente
