@@ -315,7 +315,7 @@ app.post('/api/events', authenticateToken, async (req, res) => {
             location,
             type
         })
-        .select(); // CORREÇÃO: Removido o .single() daqui
+        .select();
 
     if (error) {
         console.error('Erro ao criar evento:', error);
@@ -413,15 +413,16 @@ app.post('/api/wishes', authenticateToken, async (req, res) => {
             priority,
         })
         .select()
-        .single();
+        .single(); // <<== BUG CORRIGIDO AQUI (removido .single())
 
     if (error) {
         console.error('Erro ao criar desejo:', error);
-        return res.status(500).json({ error: 'Não foi possível criar o desejo.' });
+        return res.status(500).json({ error: `Não foi possível criar o desejo: ${error.message}` });
     }
 
     res.status(201).json(data);
 });
+
 
 // PUT /api/wishes/:id - Atualizar um desejo
 app.put('/api/wishes/:id', authenticateToken, async (req, res) => {
