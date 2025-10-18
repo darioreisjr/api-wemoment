@@ -717,9 +717,9 @@ app.get('/api/travels', authenticateToken, async (req, res) => {
 
 // POST /api/travels - Criar uma nova viagem
 app.post('/api/travels', authenticateToken, async (req, res) => {
-    const { name, destination, start_date, end_date, description, estimated_budget } = req.body;
+    const { name, destination, startDate, endDate, description, estimatedBudget } = req.body;
 
-    if (!name || !start_date || !end_date) {
+    if (!name || !startDate || !endDate) {
         return res.status(400).json({ error: 'Nome, data de início e data de fim são obrigatórios.' });
     }
 
@@ -730,10 +730,10 @@ app.post('/api/travels', authenticateToken, async (req, res) => {
                 user_id: req.user.id,
                 name,
                 destination,
-                start_date,
-                end_date,
+                start_date: startDate,
+                end_date: endDate,
                 description,
-                estimated_budget
+                estimated_budget: estimatedBudget
             })
             .select()
             .single();
@@ -749,7 +749,7 @@ app.post('/api/travels', authenticateToken, async (req, res) => {
 // PUT /api/travels/:id - Atualizar uma viagem
 app.put('/api/travels/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
-    const { name, destination, start_date, end_date, description, estimated_budget } = req.body;
+    const { name, destination, startDate, endDate, description, estimatedBudget } = req.body;
 
     try {
         const { data, error } = await supabase
@@ -757,10 +757,10 @@ app.put('/api/travels/:id', authenticateToken, async (req, res) => {
             .update({
                 name,
                 destination,
-                start_date,
-                end_date,
+                start_date: startDate,
+                end_date: endDate,
                 description,
-                estimated_budget,
+                estimated_budget: estimatedBudget,
                 updated_at: new Date().toISOString()
             })
             .eq('id', id)
