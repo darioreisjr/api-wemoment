@@ -689,6 +689,115 @@ app.delete('/api/photos/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// ===============================================
+// ===           ENDPOINTS - VIAGENS           ===
+// ===============================================
+
+// GET /api/travels - Listar todas as viagens
+app.get('/api/travels', authenticateToken, async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('travels')
+            .select(`
+                *,
+                travel_checklist (*),
+                travel_expenses (*),
+                travel_photos (*)
+            `)
+            .eq('user_id', req.user.id)
+            .order('start_date', { ascending: false });
+
+        if (error) throw error;
+        res.status(200).json(data);
+    } catch (error) {
+        console.error('Erro ao buscar viagens:', error);
+        res.status(500).json({ error: 'Não foi possível buscar as viagens.' });
+    }
+});
+
+// POST /api/travels - Criar uma nova viagem
+app.post('/api/travels', authenticateToken, async (req, res) => {
+    const { name, destination, start_date, end_date, description, estimated_budget } = req.body;
+
+    if (!name || !start_date || !end_date) {
+        return res.status(400).json({ error: 'Nome, data de início e data de fim são obrigatórios.' });
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('travels')
+            .insert({
+                user_id: req.user.id,
+                name,
+                destination,
+                start_date,
+                end_date,
+                description,
+                estimated_budget
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+        res.status(201).json(data);
+    } catch (error) {
+        console.error('Erro ao criar viagem:', error);
+        res.status(500).json({ error: 'Não foi possível criar a viagem.' });
+    }
+});
+
+// PUT /api/travels/:id - Atualizar uma viagem
+app.put('/api/travels/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const { name, destination, start_date, end_date, description, estimated_budget } = req.body;
+
+    try {
+        const { data, error } = await supabase
+            .from('travels')
+            .update({
+                name,
+                destination,
+                start_date,
+                end_date,
+                description,
+                estimated_budget,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id)
+            .eq('user_id', req.user.id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        if (!data) return res.status(404).json({ error: 'Viagem não encontrada.' });
+        res.status(200).json(data);
+    } catch (error) {
+        console.error('Erro ao atualizar viagem:', error);
+        res.status(500).json({ error: 'Não foi possível atualizar a viagem.' });
+    }
+});
+
+// DELETE /api/travels/:id - Deletar uma viagem
+app.delete('/api/travels/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const { error } = await supabase
+            .from('travels')
+            .delete()
+            .eq('id', id)
+            .eq('user_id', req.user.id);
+
+        if (error) throw error;
+        res.status(204).send();
+    } catch (error) {
+        console.error('Erro ao deletar viagem:', error);
+        res.status(500).json({ error: 'Não foi possível deletar a viagem.' });
+    }
+});
+
+// ... outros endpoints para checklist, expenses, photos ...
+
 
 // Inicia o servidor
 const port = process.env.PORT || 3000;
