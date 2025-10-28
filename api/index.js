@@ -51,9 +51,9 @@ const corsOptions = {
 
 
 app.use(cors(corsOptions));
-// Habilita pre-flight requests para todas as rotas
-app.options('*', cors(corsOptions));
-// ------------------------------------
+// // Habilita pre-flight requests para todas as rotas
+// app.options('*', cors(corsOptions));
+// // ------------------------------------
 
 app.use(express.json()); // Middleware para o Express entender requisições com corpo em JSON
 
