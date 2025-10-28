@@ -14,8 +14,10 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
     "cors": "^2.8.5",
+    "crypto": "^1.0.1",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "uuid": "^13.0.0"
   }
 }
