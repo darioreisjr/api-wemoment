@@ -15,7 +15,8 @@ const app = express();
 // --- CONFIGURAÇÃO DINÂMICA DO CORS ---
 const allowedOrigins = [
     process.env.CLIENT_URL_DEV,
-    process.env.CLIENT_URL_PROD
+    process.env.CLIENT_URL_PROD,
+    process.env.CLIENT_URL_WEMOMENT
 ];
 
 const corsOptions = {
